@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
@@ -10,7 +11,7 @@ namespace AspNetCore.Proxy.Tests
 {
     public class WsServerFixture : IDisposable
     {
-        private CancellationTokenSource _source;
+        private readonly CancellationTokenSource _source;
 
         public WsServerFixture()
         {
@@ -24,11 +25,11 @@ namespace AspNetCore.Proxy.Tests
         }
     }
 
-    public class WsUnitTests : IClassFixture<WsServerFixture>
+    public class WsIntegrationTests : IClassFixture<WsServerFixture>
     {
         public readonly ClientWebSocket _client;
 
-        public WsUnitTests(WsServerFixture fixture)
+        public WsIntegrationTests(WsServerFixture _)
         {
             _client = new ClientWebSocket();
             _client.Options.SetRequestHeader("SomeHeader", "SomeValue");
@@ -38,12 +39,13 @@ namespace AspNetCore.Proxy.Tests
         [Theory]
         [InlineData("ws://localhost:5001/ws")]
         [InlineData("ws://localhost:5001/api/ws")]
+        [InlineData("ws://localhost:5001/api/ws2")]
         public async Task CanDoWebSockets(string server)
         {
-            var send1 = "TEST1";
+            const string send1 = "TEST1";
             var expected1 = $"[{send1}]";
 
-            var send2 = "TEST2";
+            const string send2 = "TEST2";
             var expected2 = $"[{send2}]";
 
             await _client.ConnectAsync(new Uri(server), CancellationToken.None);
@@ -72,11 +74,7 @@ namespace AspNetCore.Proxy.Tests
         [Fact]
         public async Task CanCatchAbruptClose()
         {
-            var send1 = "PLEASE_KILL";
-            var expected1 = $"[{send1}]";
-
-            var send2 = "TEST2";
-            var expected2 = $"[{send2}]";
+            const string send1 = "PLEASE_KILL";
 
             await _client.ConnectAsync(new Uri("ws://localhost:5001/ws"), CancellationToken.None);
 
@@ -89,6 +87,55 @@ namespace AspNetCore.Proxy.Tests
             Assert.Equal(WebSocketCloseStatus.EndpointUnavailable, result.CloseStatus);
 
             await _client.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, Extensions.CloseDescription, CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task CanIntercept()
+        {
+            const string message = "The server returned status code '200' when status code '101' was expected.";
+
+            var client = new ClientWebSocket();
+            client.Options.AddSubProtocol("interceptedProtocol");
+
+            var exception = await Assert.ThrowsAnyAsync<WebSocketException>(() => client.ConnectAsync(new Uri("ws://localhost:5001/ws"), CancellationToken.None));
+
+            Assert.Equal(message, exception.Message);
+        }
+
+        [Fact]
+        public async Task CanRunBeforeConnectAndHandleFailure()
+        {
+            // Because there is no protocol attached, the `BeforeConnect` uses a bad endpoint protocol.
+            // This causes a failure, and that failure is intercepted by `HandleFailure`.
+            var message = "The server returned status code '599' when status code '101' was expected.";
+
+            var client = new ClientWebSocket();
+
+            var exception = await Assert.ThrowsAnyAsync<WebSocketException>(() => client.ConnectAsync(new Uri("ws://localhost:5001/ws"), CancellationToken.None));
+
+            Assert.Equal(message, exception.Message);
+        }
+
+        [Fact]
+        public async Task CanFailWhenWsRequestIsToHttpProxy()
+        {
+            const string message = "The server returned status code '502' when status code '101' was expected.";
+
+            var client = new ClientWebSocket();
+
+            var exception = await Assert.ThrowsAnyAsync<WebSocketException>(() => client.ConnectAsync(new Uri("ws://localhost:5001/api/http"), CancellationToken.None));
+
+            Assert.Equal(message, exception.Message);
+        }
+
+        [Fact]
+        public async Task CanFailWhenHttpRequestIsToWsProxy()
+        {
+            var client = new HttpClient();
+
+            var result = await client.GetAsync("http://localhost:5001/api/ws");
+
+            Assert.Equal(HttpStatusCode.BadGateway, result.StatusCode);
         }
     }
 }

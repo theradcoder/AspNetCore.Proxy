@@ -12,35 +12,15 @@ using Xunit;
 
 namespace AspNetCore.Proxy.Tests
 {
-    public class HttpUnitTests
+    public class HttpIntegrationTests
     {
         private readonly TestServer _server;
         private readonly HttpClient _client;
 
-        public HttpUnitTests()
+        public HttpIntegrationTests()
         {
             _server = new TestServer(new WebHostBuilder().UseStartup<Startup>());
             _client = _server.CreateClient();
-        }
-
-        [Fact]
-        public async Task CanProxyAttributeToTask()
-        {
-            var response = await _client.GetAsync("api/posts/totask/1");
-            response.EnsureSuccessStatusCode();
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            Assert.Contains("sunt aut facere repellat provident occaecati excepturi optio reprehenderit", JObject.Parse(responseString).Value<string>("title"));
-        }
-
-        [Fact]
-        public async Task CanProxyAttributeToString()
-        {
-            var response = await _client.GetAsync("api/posts/tostring/1");
-            response.EnsureSuccessStatusCode();
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            Assert.Contains("sunt aut facere repellat provident occaecati excepturi optio reprehenderit", JObject.Parse(responseString).Value<string>("title"));
         }
 
         [Fact]
@@ -71,7 +51,6 @@ namespace AspNetCore.Proxy.Tests
             Assert.Equal(contentType, JObject.Parse(responseString)["headers"]["content-type"]);
             Assert.Equal(content.Length, JObject.Parse(responseString)["headers"]["content-length"]);
         }
-
 
         [Fact]
         public async Task CanProxyControllerPostWithFormRequest()
@@ -109,49 +88,9 @@ namespace AspNetCore.Proxy.Tests
         }
 
         [Fact]
-        public async Task CanProxyMiddlewareWithArgsToTask()
-        {
-            var response = await _client.GetAsync("api/comments/argstotask/1");
-            response.EnsureSuccessStatusCode();
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            Assert.Contains("id labore ex et quam laborum", JObject.Parse(responseString).Value<string>("name"));
-        }
-
-        [Fact]
-        public async Task CanProxyMiddlewareWithEmptyToTask()
-        {
-            var response = await _client.GetAsync("api/comments/emptytotask");
-            response.EnsureSuccessStatusCode();
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            Assert.Contains("id labore ex et quam laborum", JObject.Parse(responseString).Value<string>("name"));
-        }
-
-        [Fact]
         public async Task CanProxyMiddlewareWithContextAndArgsToString()
         {
             var response = await _client.GetAsync("api/comments/contextandargstostring/1");
-            response.EnsureSuccessStatusCode();
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            Assert.Contains("id labore ex et quam laborum", JObject.Parse(responseString).Value<string>("name"));
-        }
-
-        [Fact]
-        public async Task CanProxyMiddlewareWithArgsToString()
-        {
-            var response = await _client.GetAsync("api/comments/argstostring/1");
-            response.EnsureSuccessStatusCode();
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            Assert.Contains("id labore ex et quam laborum", JObject.Parse(responseString).Value<string>("name"));
-        }
-
-        [Fact]
-        public async Task CanProxyMiddlewareWithEmptyToString()
-        {
-            var response = await _client.GetAsync("api/comments/emptytostring");
             response.EnsureSuccessStatusCode();
 
             var responseString = await response.Content.ReadAsStringAsync();
@@ -183,7 +122,7 @@ namespace AspNetCore.Proxy.Tests
         {
             var response = await _client.GetAsync("api/controller/customresponse/1");
             response.EnsureSuccessStatusCode();
-            
+
             Assert.Equal("It's all greek...er, Latin...to me!", await response.Content.ReadAsStringAsync());
         }
 
@@ -192,7 +131,7 @@ namespace AspNetCore.Proxy.Tests
         {
             var response = await _client.GetAsync("api/controller/badresponse/1");
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-            
+
             Assert.Equal("I tried to proxy, but I chose a bad address, and it is not found.", await response.Content.ReadAsStringAsync());
         }
 
@@ -222,10 +161,7 @@ namespace AspNetCore.Proxy.Tests
         [Fact]
         public async Task CanProxyConcurrentCalls()
         {
-            var calls = Enumerable.Range(1, 100).Select(i =>
-            {
-                return _client.GetAsync($"api/controller/posts/{i}");
-            });
+            var calls = Enumerable.Range(1, 100).Select(i => _client.GetAsync($"api/controller/posts/{i}"));
 
             Assert.True((await Task.WhenAll(calls)).All(r => r.IsSuccessStatusCode));
         }
